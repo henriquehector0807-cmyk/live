@@ -1,6 +1,6 @@
 import express from "express";
 import { v4 as uuidv4 } from "uuid";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gt } from "drizzle-orm";
 import { db } from "../db/index";
 import { paymentSettings, orders, products, visitors, lives, users } from "../db/schema";
 import { requireAuth } from "./auth";
@@ -166,7 +166,11 @@ paymentsRouter.post("/public/order/pix", async (req, res) => {
       shipping = 0,
     } = req.body;
 
-    const qty = Math.max(1, Math.floor(Number(quantity) || 1));
+    const parsedQty = Number(quantity);
+    const qty = Math.floor(parsedQty);
+    if (!Number.isInteger(qty) || qty < 1 || qty > 99) {
+      return res.status(400).json({ error: "A quantidade deve ser um número inteiro entre 1 e 99." });
+    }
     if (!liveId || !sessionId || !productId) {
       return res.status(400).json({ error: "Parâmetros da compra incompletos." });
     }
@@ -180,8 +184,12 @@ paymentsRouter.post("/public/order/pix", async (req, res) => {
     const live = await db.select().from(lives).where(eq(lives.id, liveId)).limit(1);
     if (!live.length) return res.status(404).json({ error: "Live não encontrada" });
 
-    const product = await db.select().from(products).where(eq(products.id, productId)).limit(1);
-    if (!product.length) return res.status(404).json({ error: "Produto não encontrado" });
+    const product = await db.select().from(products).where(and(eq(products.id, productId), eq(products.userId, live[0].userId))).limit(1);
+    if (!product.length) return res.status(404).json({ error: "Produto não encontrado nesta live" });
+
+    if (product[0].status !== "active") {
+      return res.status(400).json({ error: "Este produto não está disponível para compra." });
+    }
 
     // Check stock
     const stock = Number(product[0].stock || 0);
@@ -220,8 +228,14 @@ paymentsRouter.post("/public/order/pix", async (req, res) => {
     }
 
     const unitPrice = Number(product[0].promotionalPrice ?? product[0].price);
-    const shippingValue = Math.max(0, Number(shipping) || Number(product[0].shippingPrice || 0));
-    const total = qty * unitPrice + shippingValue;
+    const shippingInput = Number(shipping);
+    const shippingValue = Number.isFinite(shippingInput) && shippingInput >= 0
+      ? shippingInput
+      : Number(product[0].shippingPrice || 0);
+    const total = Number((qty * unitPrice + shippingValue).toFixed(2));
+    if (!Number.isFinite(unitPrice) || unitPrice < 0 || !Number.isFinite(total) || total <= 0) {
+      return res.status(400).json({ error: "O preço do produto está inválido." });
+    }
     const orderId = uuidv4();
 
     const formattedAddress = typeof shippingAddress === "object" ? JSON.stringify(shippingAddress) : String(shippingAddress || "");
@@ -245,8 +259,11 @@ paymentsRouter.post("/public/order/pix", async (req, res) => {
 
     // Save order in database
     await db.transaction(async (tx) => {
-      if (stock >= qty) {
-        await tx.update(products).set({ stock: stock - qty, updatedAt: new Date().toISOString() }).where(eq(products.id, productId));
+      const stockUpdate = await tx.update(products)
+        .set({ stock: stock - qty, updatedAt: new Date().toISOString() })
+        .where(and(eq(products.id, productId), gt(products.stock, qty - 1)));
+      if (stockUpdate.rowsAffected !== undefined && stockUpdate.rowsAffected !== 1) {
+        throw new Error("Estoque insuficiente para este produto.");
       }
       await tx.insert(orders).values({
         id: orderId,
@@ -340,9 +357,13 @@ paymentsRouter.get("/public/order/:orderId/status", async (req, res) => {
               mpStatus: "approved",
             });
           } else if (mpData.status !== currentOrder.mpStatus) {
+            const terminalFailure = ["rejected", "cancelled", "refunded", "charged_back"].includes(mpData.status);
             await db
               .update(orders)
-              .set({ mpStatus: mpData.status })
+              .set({
+                mpStatus: mpData.status,
+                ...(terminalFailure ? { status: "cancelled", paymentStatus: mpData.status === "refunded" ? "refunded" : "cancelled" } : {}),
+              })
               .where(eq(orders.id, orderId));
           }
         } catch (mpError) {
@@ -386,15 +407,14 @@ paymentsRouter.post("/webhooks/mercadopago", async (req, res) => {
           const mpService = new MercadoPagoService(mpToken);
           const mpData = await mpService.getPayment(String(paymentId));
 
+          const terminalFailure = ["rejected", "cancelled", "refunded", "charged_back"].includes(mpData.status);
+          await db
+            .update(orders)
+            .set(mpData.isApproved
+              ? { status: "confirmed", paymentStatus: "paid", mpStatus: "approved" }
+              : { mpStatus: mpData.status, ...(terminalFailure ? { status: "cancelled", paymentStatus: mpData.status === "refunded" ? "refunded" : "cancelled" } : {}) })
+            .where(eq(orders.id, order[0].id));
           if (mpData.isApproved) {
-            await db
-              .update(orders)
-              .set({
-                status: "confirmed",
-                paymentStatus: "paid",
-                mpStatus: "approved",
-              })
-              .where(eq(orders.id, order[0].id));
             console.log(`[MercadoPago Webhook] Pedido ${order[0].id} atualizado para PAGO (Aprovado)!`);
           }
         }

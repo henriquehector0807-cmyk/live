@@ -10,6 +10,7 @@ export interface CreatePixPaymentInput {
   };
   externalReference: string;
   notificationUrl?: string;
+  idempotencyKey?: string;
 }
 
 export interface PixPaymentResult {
@@ -102,7 +103,14 @@ export class MercadoPagoService {
       body.notification_url = input.notificationUrl;
     }
 
-    const idempotencyKey = uuidv4();
+    if (!Number.isFinite(input.amount) || input.amount <= 0) {
+      throw new Error("O valor do pagamento deve ser maior que zero.");
+    }
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      throw new Error("Informe um e-mail válido para o pagamento.");
+    }
+
+    const idempotencyKey = input.idempotencyKey || uuidv4();
 
     const response = await fetch("https://api.mercadopago.com/v1/payments", {
       method: "POST",
