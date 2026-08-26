@@ -28,6 +28,21 @@ export default function DashboardPayments() {
   // Test credentials state
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ valid: boolean; message: string; user?: any } | null>(null);
+  const [verifiedStep, setVerifiedStep] = useState(0);
+
+  const verifyNextVariable = async () => {
+    setErrorMsg(null);
+    setTestResult(null);
+    if (verifiedStep === 0) {
+      if (!/^(APP_USR|TEST)-\S+$/.test(settings.publicKey.trim())) {
+        setErrorMsg("A Public Key deve começar com APP_USR- ou TEST-.");
+        return;
+      }
+      setVerifiedStep(1);
+      return;
+    }
+    await handleTest();
+  };
 
   // Webhook copy
   const [copiedWebhook, setCopiedWebhook] = useState(false);
@@ -116,6 +131,7 @@ export default function DashboardPayments() {
       });
       const data = await res.json();
       setTestResult(data);
+      if (data.valid) setVerifiedStep(2);
     } catch (e: any) {
       setTestResult({ valid: false, message: e.message || "Erro ao testar conexão." });
     } finally {
@@ -273,8 +289,12 @@ export default function DashboardPayments() {
             </label>
           </div>
 
+          <div className="mb-2 rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3 text-xs text-blue-200">
+            Etapa {verifiedStep + 1} de 2: valide cada credencial para liberar o próximo campo.
+          </div>
+
           {/* Access Token */}
-          <div>
+          {verifiedStep >= 1 && <div>
             <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-2 flex items-center justify-between">
               <span>Access Token — MERCADOPAGO_ACCESS_TOKEN *</span>
               {settings.hasToken && !showTokenInput && (
@@ -331,11 +351,22 @@ export default function DashboardPayments() {
             />
           </div>
 
+          {verifiedStep === 0 && (
+            <button type="button" onClick={verifyNextVariable} className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white hover:bg-blue-500">
+              OK — Verificar Public Key e liberar Access Token
+            </button>
+          )}
+          {verifiedStep === 1 && (
+            <button type="button" onClick={verifyNextVariable} disabled={isTesting || !settings.mpAccessToken} className="w-full rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white hover:bg-blue-500 disabled:opacity-50">
+              {isTesting ? "Verificando Access Token..." : "OK — Verificar Access Token e vincular Mercado Pago"}
+            </button>
+          )}
+
           {/* Submit */}
           <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
             <button
               type="submit"
-              disabled={isSaving}
+              disabled={isSaving || verifiedStep < 2}
               className="bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white px-6 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-orange-600/20 transition-colors flex items-center gap-2"
             >
               {isSaving ? (
