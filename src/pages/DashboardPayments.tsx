@@ -260,7 +260,7 @@ export default function DashboardPayments() {
           <div className="flex items-center justify-between border-b border-white/10 pb-4">
             <div>
               <h2 className="text-lg font-bold">Credenciais de API</h2>
-              <p className="text-xs text-gray-400">Insira suas chaves do painel de desenvolvedores do Mercado Pago.</p>
+              <p className="text-xs text-gray-400">Preencha os campos abaixo ou configure as mesmas variáveis no ambiente do servidor.</p>
             </div>
             <label className="flex items-center gap-3 cursor-pointer">
               <span className="text-xs font-semibold text-gray-300">Ativar PIX na Live</span>
@@ -276,7 +276,7 @@ export default function DashboardPayments() {
           {/* Access Token */}
           <div>
             <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-2 flex items-center justify-between">
-              <span>Access Token (Produção ou Teste) *</span>
+              <span>Access Token — MERCADOPAGO_ACCESS_TOKEN *</span>
               {settings.hasToken && !showTokenInput && (
                 <button
                   type="button"
@@ -317,10 +317,10 @@ export default function DashboardPayments() {
             )}
           </div>
 
-          {/* Public Key (Optional) */}
+          {/* Public Key */}
           <div>
             <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider mb-2">
-              Public Key (Opcional)
+              Public Key — MERCADOPAGO_PUBLIC_KEY
             </label>
             <input
               type="text"
