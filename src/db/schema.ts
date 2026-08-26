@@ -67,6 +67,13 @@ export const orders = sqliteTable("orders", {
   total: real("total").notNull(),
   status: text("status").default("pending_payment"), // pending_payment, confirmed, cancelled
   paymentStatus: text("payment_status").default("pending_payment"), // pending_payment, paid, refunded
+  customerCpf: text("customer_cpf"),
+  mpPaymentId: text("mp_payment_id"),
+  mpStatus: text("mp_status"), // pending, approved, rejected, cancelled
+  paymentMethod: text("payment_method").default("pix"), // pix, external_link, credit_card
+  qrCode: text("qr_code"),
+  qrCodeBase64: text("qr_code_base64"),
+  ticketUrl: text("ticket_url"),
   createdAt: text("created_at").default(sql`(CURRENT_TIMESTAMP)`),
 });
 
@@ -157,5 +164,15 @@ export const aiChatLogs = sqliteTable("ai_chat_logs", {
   status: text("status").default("success"), // success, error
   errorMessage: text("error_message"),
   createdAt: text("created_at").default(sql`(CURRENT_TIMESTAMP)`),
+});
+
+export const paymentSettings = sqliteTable("payment_settings", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  mpAccessToken: text("mp_access_token"),
+  mpPublicKey: text("mp_public_key"),
+  isEnabled: integer("is_enabled").default(1),
+  createdAt: text("created_at").default(sql`(CURRENT_TIMESTAMP)`),
+  updatedAt: text("updated_at").default(sql`(CURRENT_TIMESTAMP)`),
 });
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { Package, Search, Plus, MoreVertical, Edit, Copy, Link as LinkIcon, AlertTriangle, Trash2, X, Upload, Video, LogOut, Bot, Wrench, CheckCircle2, AlertCircle, Loader2, Image as ImageIcon } from "lucide-react";
+import { Package, Search, Plus, MoreVertical, Edit, Copy, Link as LinkIcon, AlertTriangle, Trash2, X, Upload, Video, LogOut, Bot, Wrench, CheckCircle2, AlertCircle, Loader2, Image as ImageIcon, CreditCard } from "lucide-react";
 
 interface Product {
   id: string;
@@ -275,6 +275,10 @@ export default function DashboardProducts() {
           <Link to="/painel/bot-ia" className="flex items-center space-x-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg font-bold transition-colors">
             <Bot className="w-5 h-5" />
             <span>Bot IA</span>
+          </Link>
+          <Link to="/painel/pagamentos" className="flex items-center space-x-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg font-bold transition-colors">
+            <CreditCard className="w-5 h-5" />
+            <span>Pagamentos</span>
           </Link>
           <Link to="/painel/ferramentas" className="flex items-center space-x-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg font-bold transition-colors">
             <Wrench className="w-5 h-5" />

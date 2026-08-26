@@ -5,7 +5,7 @@ import {
   Wrench, Video, Package, Bot, LogOut, Link2, Copy, Check,
   BarChart3, Users, ShoppingCart, DollarSign, MessageSquare,
   Download, Trash2, RefreshCw, ExternalLink, AlertCircle,
-  Radio, Clock, TrendingUp, Eye, CheckCircle2
+  Radio, Clock, TrendingUp, Eye, CheckCircle2, CreditCard
 } from "lucide-react";
 
 const AUTH_HEADER = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}`, "Content-Type": "application/json" });
@@ -160,6 +160,9 @@ export default function DashboardTools() {
           </Link>
           <Link to="/painel/bot-ia" className="flex items-center space-x-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg font-bold transition-colors">
             <Bot className="w-5 h-5" /><span>Bot IA</span>
+          </Link>
+          <Link to="/painel/pagamentos" className="flex items-center space-x-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg font-bold transition-colors">
+            <CreditCard className="w-5 h-5" /><span>Pagamentos</span>
           </Link>
           <Link to="/painel/ferramentas" className="flex items-center space-x-3 px-4 py-3 bg-white/10 text-white rounded-lg font-bold">
             <Wrench className="w-5 h-5" /><span>Ferramentas</span>

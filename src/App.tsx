@@ -12,6 +12,7 @@ import './index.css';
 import DashboardProducts from './pages/DashboardProducts';
 import DashboardAiBot from './pages/DashboardAiBot';
 import DashboardTools from './pages/DashboardTools';
+import DashboardPayments from './pages/DashboardPayments';
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
           <Route path="/painel" element={<Dashboard />} />
           <Route path="/painel/produtos" element={<DashboardProducts />} />
           <Route path="/painel/bot-ia" element={<DashboardAiBot />} />
+          <Route path="/painel/pagamentos" element={<DashboardPayments />} />
           <Route path="/painel/lives/nova" element={<LiveEditor />} />
           <Route path="/painel/lives/:id" element={<LiveEditor />} />
           <Route path="/painel/ferramentas" element={<DashboardTools />} />

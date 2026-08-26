@@ -69,6 +69,22 @@ const sqliteClient = createClient({
       status TEXT DEFAULT 'success',
       error_message TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`,
+    "ALTER TABLE orders ADD COLUMN customer_cpf TEXT",
+    "ALTER TABLE orders ADD COLUMN mp_payment_id TEXT",
+    "ALTER TABLE orders ADD COLUMN mp_status TEXT",
+    "ALTER TABLE orders ADD COLUMN payment_method TEXT DEFAULT 'pix'",
+    "ALTER TABLE orders ADD COLUMN qr_code TEXT",
+    "ALTER TABLE orders ADD COLUMN qr_code_base64 TEXT",
+    "ALTER TABLE orders ADD COLUMN ticket_url TEXT",
+    `CREATE TABLE IF NOT EXISTS payment_settings (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      mp_access_token TEXT,
+      mp_public_key TEXT,
+      is_enabled INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     )`
   ];
   for (const sql of migrations) {

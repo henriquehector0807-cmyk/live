@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "react-router-dom";
-import { ShoppingBag, Send, Heart, X, CheckCircle2, ChevronRight, ArrowLeft, Loader2, ExternalLink, Radio } from "lucide-react";
+import { ShoppingBag, Send, Heart, X, CheckCircle2, ChevronRight, ArrowLeft, Loader2, ExternalLink, Radio, QrCode, Copy, Check, ShieldCheck, Sparkles, CreditCard, Clock } from "lucide-react";
 
 // ─────────────────────────────────────────────────────────────
 //  TYPES
@@ -90,6 +90,14 @@ function avatarInitials(name: string): string {
   return parts.length >= 2
     ? (parts[0][0] + parts[1][0]).toUpperCase()
     : name.slice(0, 2).toUpperCase();
+}
+
+function formatCpf(value: string): string {
+  const digits = value.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9, 11)}`;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -205,12 +213,26 @@ export default function LivePage() {
 
   // ── Checkout & Purchase Flow State ─────────────────────────
   const [showCheckout, setShowCheckout] = useState(false);
-  const [checkoutStep, setCheckoutStep] = useState<'summary' | 'delivery' | 'redirecting' | 'success'>('summary');
+  const [checkoutStep, setCheckoutStep] = useState<'summary' | 'delivery' | 'pix' | 'redirecting' | 'success'>('summary');
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [orderQuantity, setOrderQuantity] = useState(1);
   
+  const [mercadoPagoEnabled, setMercadoPagoEnabled] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'pix' | 'external'>('pix');
+  const [pixData, setPixData] = useState<{
+    orderId: string;
+    mpPaymentId: string;
+    qrCode?: string;
+    qrCodeBase64?: string;
+    ticketUrl?: string;
+    total: number;
+  } | null>(null);
+  const [pixCopied, setPixCopied] = useState(false);
+  const [pixTimeLeft, setPixTimeLeft] = useState(900); // 15 min
+
   const [customerData, setCustomerData] = useState({
     name: '',
+    cpf: '',
     phone: '',
     email: '',
     cep: '',
@@ -256,6 +278,7 @@ export default function LivePage() {
           setLive(data.live);
           setEvents(data.events || []);
           setTimeline(data.timeline || []);
+          setMercadoPagoEnabled(!!data.mercadoPagoEnabled);
           await fetch("/api/public/visitor", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -275,6 +298,37 @@ export default function LivePage() {
       })
       .catch(() => {});
   }, [slug]);
+
+  // Polling for PIX payment status
+  useEffect(() => {
+    if (checkoutStep !== 'pix' || !pixData?.orderId) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/public/order/${pixData.orderId}/status`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.isPaid || data.status === 'confirmed' || data.paymentStatus === 'paid') {
+            setCheckoutStep('success');
+            clearInterval(interval);
+          }
+        }
+      } catch (err) {
+        console.error("[PIX Poll Error]", err);
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [checkoutStep, pixData]);
+
+  // PIX Countdown timer
+  useEffect(() => {
+    if (checkoutStep !== 'pix') return;
+    const timer = setInterval(() => {
+      setPixTimeLeft(t => Math.max(0, t - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [checkoutStep]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -600,7 +654,7 @@ export default function LivePage() {
   };
 
   // ─────────────────────────────────────────────────────────
-  //  Confirm Order & Redirect to Payment
+  //  Confirm Order & Process Payment
   // ─────────────────────────────────────────────────────────
   const handleConfirmOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -608,6 +662,13 @@ export default function LivePage() {
 
     // Validate required fields
     if (!customerData.name.trim()) { setFormError("Informe seu nome completo"); return; }
+    
+    const cleanCpf = customerData.cpf.replace(/\D/g, '');
+    if (mercadoPagoEnabled && cleanCpf.length !== 11) {
+      setFormError("Informe um CPF válido (11 dígitos) para emissão do PIX");
+      return;
+    }
+
     if (!customerData.phone.trim()) { setFormError("Informe seu telefone / WhatsApp"); return; }
     if (!customerData.cep.trim()) { setFormError("Informe o CEP"); return; }
     if (!customerData.street.trim()) { setFormError("Informe o endereço"); return; }
@@ -622,45 +683,90 @@ export default function LivePage() {
       const sk = 'live-commerce-session';
       const sid = sessionId || localStorage.getItem(sk) || crypto.randomUUID();
 
-      const response = await fetch('/api/public/order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          liveId: live.id,
-          sessionId: sid,
-          productId: selectedProduct.id === 'default' ? undefined : selectedProduct.id,
-          quantity: orderQuantity,
-          customerName: customerData.name.trim(),
-          customerPhone: customerData.phone.trim(),
-          customerEmail: customerData.email.trim() || undefined,
-          shippingAddress: {
-            cep: customerData.cep.trim(),
-            street: customerData.street.trim(),
-            number: customerData.number.trim(),
-            complement: customerData.complement.trim(),
-            neighborhood: customerData.neighborhood.trim(),
-            city: customerData.city.trim(),
-            state: customerData.state.trim(),
-          }
-        }),
-      });
+      if (mercadoPagoEnabled && paymentMethod === 'pix') {
+        // Mercado Pago PIX transparent checkout
+        const response = await fetch('/api/public/order/pix', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            liveId: live.id,
+            sessionId: sid,
+            productId: selectedProduct.id === 'default' ? undefined : selectedProduct.id,
+            quantity: orderQuantity,
+            customerName: customerData.name.trim(),
+            customerCpf: cleanCpf,
+            customerPhone: customerData.phone.trim(),
+            customerEmail: customerData.email.trim() || undefined,
+            shippingAddress: {
+              cep: customerData.cep.trim(),
+              street: customerData.street.trim(),
+              number: customerData.number.trim(),
+              complement: customerData.complement.trim(),
+              neighborhood: customerData.neighborhood.trim(),
+              city: customerData.city.trim(),
+              state: customerData.state.trim(),
+            }
+          }),
+        });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Não foi possível registrar o pedido.");
-      }
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || "Não foi possível gerar o PIX.");
+        }
 
-      const result = await response.json();
-      const targetUrl = result.paymentUrl || selectedProduct.paymentUrl;
-
-      if (targetUrl && (targetUrl.startsWith("http://") || targetUrl.startsWith("https://"))) {
-        setPaymentRedirectUrl(targetUrl);
-        setCheckoutStep('redirecting');
-        setTimeout(() => {
-          window.location.href = targetUrl;
-        }, 1500);
+        const result = await response.json();
+        setPixData({
+          orderId: result.orderId,
+          mpPaymentId: result.mpPaymentId,
+          qrCode: result.qrCode,
+          qrCodeBase64: result.qrCodeBase64,
+          ticketUrl: result.ticketUrl,
+          total: result.total,
+        });
+        setPixTimeLeft(900);
+        setCheckoutStep('pix');
       } else {
-        setCheckoutStep('success');
+        // External link checkout fallback
+        const response = await fetch('/api/public/order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            liveId: live.id,
+            sessionId: sid,
+            productId: selectedProduct.id === 'default' ? undefined : selectedProduct.id,
+            quantity: orderQuantity,
+            customerName: customerData.name.trim(),
+            customerPhone: customerData.phone.trim(),
+            customerEmail: customerData.email.trim() || undefined,
+            shippingAddress: {
+              cep: customerData.cep.trim(),
+              street: customerData.street.trim(),
+              number: customerData.number.trim(),
+              complement: customerData.complement.trim(),
+              neighborhood: customerData.neighborhood.trim(),
+              city: customerData.city.trim(),
+              state: customerData.state.trim(),
+            }
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || "Não foi possível registrar o pedido.");
+        }
+
+        const result = await response.json();
+        const targetUrl = result.paymentUrl || selectedProduct.paymentUrl;
+
+        if (targetUrl && (targetUrl.startsWith("http://") || targetUrl.startsWith("https://"))) {
+          setPaymentRedirectUrl(targetUrl);
+          setCheckoutStep('redirecting');
+          setTimeout(() => {
+            window.location.href = targetUrl;
+          }, 1500);
+        } else {
+          setCheckoutStep('success');
+        }
       }
     } catch (err: any) {
       console.error("[Checkout error]", err);
@@ -1023,17 +1129,33 @@ export default function LivePage() {
               <form onSubmit={handleConfirmOrder} className="flex-1 overflow-y-auto flex flex-col no-scrollbar">
                 <div className="p-6 space-y-4 flex-1">
                   
-                  {/* Nome Completo */}
-                  <div>
-                    <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Nome Completo *</label>
-                    <input
-                      required
-                      type="text"
-                      placeholder="Seu nome completo"
-                      value={customerData.name}
-                      onChange={e => setCustomerData({ ...customerData, name: e.target.value })}
-                      className="w-full bg-[#1A1A1A] border border-white/10 text-white rounded-xl px-4 py-2.5 outline-none focus:border-[#FF5A36] transition-colors text-sm"
-                    />
+                  {/* Nome Completo & CPF */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">Nome Completo *</label>
+                      <input
+                        required
+                        type="text"
+                        placeholder="Seu nome completo"
+                        value={customerData.name}
+                        onChange={e => setCustomerData({ ...customerData, name: e.target.value })}
+                        className="w-full bg-[#1A1A1A] border border-white/10 text-white rounded-xl px-4 py-2.5 outline-none focus:border-[#FF5A36] transition-colors text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">
+                        CPF {mercadoPagoEnabled ? "(obrigatório para PIX) *" : "(opcional)"}
+                      </label>
+                      <input
+                        required={mercadoPagoEnabled}
+                        type="text"
+                        placeholder="000.000.000-00"
+                        maxLength={14}
+                        value={customerData.cpf}
+                        onChange={e => setCustomerData({ ...customerData, cpf: formatCpf(e.target.value) })}
+                        className="w-full bg-[#1A1A1A] border border-white/10 text-white rounded-xl px-4 py-2.5 outline-none focus:border-[#FF5A36] transition-colors text-sm font-mono"
+                      />
+                    </div>
                   </div>
 
                   {/* Telefone & Email */}
@@ -1154,6 +1276,52 @@ export default function LivePage() {
                     </div>
                   </div>
 
+                  {/* Payment Method Selector (if MP enabled) */}
+                  {mercadoPagoEnabled && (
+                    <div className="pt-2">
+                      <label className="block text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider">Forma de Pagamento</label>
+                      <div className={`grid ${selectedProduct.paymentUrl ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
+                        <button
+                          type="button"
+                          onClick={() => setPaymentMethod('pix')}
+                          className={`p-3 rounded-xl border text-left flex items-center gap-2.5 transition-all ${
+                            paymentMethod === 'pix'
+                              ? 'bg-green-500/15 border-green-500/60 text-white shadow-lg'
+                              : 'bg-black/40 border-white/10 text-gray-400 hover:text-white'
+                          }`}
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-green-500/20 text-green-400 flex items-center justify-center shrink-0">
+                            <QrCode className="w-4 h-4" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold leading-tight">PIX Instantâneo</p>
+                            <p className="text-[10px] text-green-400 font-medium">Pague na tela sem sair da live</p>
+                          </div>
+                        </button>
+
+                        {selectedProduct.paymentUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setPaymentMethod('external')}
+                            className={`p-3 rounded-xl border text-left flex items-center gap-2.5 transition-all ${
+                              paymentMethod === 'external'
+                                ? 'bg-blue-500/15 border-blue-500/60 text-white shadow-lg'
+                                : 'bg-black/40 border-white/10 text-gray-400 hover:text-white'
+                            }`}
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+                              <ExternalLink className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <p className="text-xs font-bold leading-tight">Link Externo</p>
+                              <p className="text-[10px] text-gray-400">Cartão / Checkout externo</p>
+                            </div>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                 </div>
 
                 <div className="p-6 border-t border-white/10 bg-[#1A1A1A] pb-safe shrink-0">
@@ -1165,17 +1333,107 @@ export default function LivePage() {
                     {isSubmittingOrder ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Criando pedido...</span>
+                        <span>{mercadoPagoEnabled && paymentMethod === 'pix' ? "Gerando PIX..." : "Criando pedido..."}</span>
                       </>
                     ) : (
-                      <span>Confirmar Pedido (R$ {(selectedProduct.price * orderQuantity).toFixed(2)})</span>
+                      <span>
+                        {mercadoPagoEnabled && paymentMethod === 'pix' ? "Pagar com PIX" : "Confirmar Pedido"} (R$ {(selectedProduct.price * orderQuantity).toFixed(2)})
+                      </span>
                     )}
                   </button>
                 </div>
               </form>
             )}
 
-            {/* ── STEP 3A: REDIRECIONANDO PARA O LINK DE PAGAMENTO ── */}
+            {/* ── STEP 3A: PAGAMENTO PIX MERCADO PAGO NA TELA ── */}
+            {checkoutStep === 'pix' && pixData && (
+              <div className="flex-1 overflow-y-auto flex flex-col items-center p-6 text-center pb-safe no-scrollbar">
+                
+                {/* Header Badge */}
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-bold mb-3">
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>PIX Gerado com Sucesso</span>
+                </div>
+
+                <h3 className="text-xl font-bold text-white mb-1">
+                  R$ {pixData.total.toFixed(2)}
+                </h3>
+                <p className="text-gray-400 text-xs mb-4">
+                  Escaneie o QR Code ou copie o código PIX abaixo para pagar no app do seu banco.
+                </p>
+
+                {/* QR Code Image */}
+                {pixData.qrCodeBase64 ? (
+                  <div className="p-3 bg-white rounded-2xl shadow-2xl mb-4 border-2 border-green-500/40 animate-in zoom-in-95 duration-300">
+                    <img
+                      src={`data:image/png;base64,${pixData.qrCodeBase64}`}
+                      alt="QR Code PIX"
+                      className="w-48 h-48 sm:w-56 sm:h-56 object-contain"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-48 h-48 bg-white/10 rounded-2xl flex items-center justify-center mb-4">
+                    <QrCode className="w-16 h-16 text-gray-400" />
+                  </div>
+                )}
+
+                {/* Pix Copia e Cola */}
+                {pixData.qrCode && (
+                  <div className="w-full max-w-sm mb-4 space-y-2">
+                    <div className="bg-black/60 border border-white/10 rounded-xl p-2.5 flex items-center gap-2 text-left">
+                      <span className="text-[11px] font-mono text-gray-400 truncate flex-1 select-all">
+                        {pixData.qrCode}
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (pixData.qrCode) {
+                          navigator.clipboard.writeText(pixData.qrCode);
+                          setPixCopied(true);
+                          setTimeout(() => setPixCopied(false), 2500);
+                        }
+                      }}
+                      className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition active:scale-95 shadow-lg shadow-green-600/30"
+                    >
+                      {pixCopied ? (
+                        <>
+                          <Check className="w-4 h-4 text-white" />
+                          <span>Código PIX Copiado!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-4 h-4" />
+                          <span>Copiar Código PIX (Copia e Cola)</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+
+                {/* Real-time waiting indicator */}
+                <div className="w-full max-w-sm bg-white/5 border border-white/10 rounded-2xl p-3 mb-4 flex items-center gap-3 text-left">
+                  <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center shrink-0">
+                    <div className="w-3 h-3 rounded-full bg-green-500 animate-ping" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-white leading-tight">Aguardando confirmação...</p>
+                    <p className="text-[10px] text-gray-400">Assim que você pagar no app do banco, identificaremos na hora!</p>
+                  </div>
+                </div>
+
+                {/* Expiry timer */}
+                <div className="flex items-center gap-1.5 text-xs text-gray-400 mb-2">
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>
+                    Válido por: <strong className="text-orange-400 font-mono">{Math.floor(pixTimeLeft / 60)}:{String(pixTimeLeft % 60).padStart(2, '0')}</strong>
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* ── STEP 3B: REDIRECIONANDO PARA O LINK DE PAGAMENTO ── */}
             {checkoutStep === 'redirecting' && (
               <div className="flex-1 p-8 flex flex-col items-center justify-center text-center pb-safe">
                 <div className="w-16 h-16 bg-[#FF5A36]/20 text-[#FF5A36] rounded-full flex items-center justify-center mb-6 animate-pulse">
@@ -1198,25 +1456,25 @@ export default function LivePage() {
               </div>
             )}
 
-            {/* ── STEP 3B: SUCESSO / CONFIRMAÇÃO MANUAL ── */}
+            {/* ── STEP 3C: SUCESSO / PAGAMENTO APROVADO ── */}
             {checkoutStep === 'success' && (
-              <div className="flex-1 p-8 flex flex-col items-center justify-center text-center pb-safe">
-                <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mb-6">
-                  <CheckCircle2 className="w-10 h-10 text-green-500" />
+              <div className="flex-1 p-8 flex flex-col items-center justify-center text-center pb-safe animate-in zoom-in-95 duration-300">
+                <div className="w-20 h-20 bg-green-500/20 border-2 border-green-500/40 rounded-full flex items-center justify-center mb-6 text-green-400 shadow-xl shadow-green-500/20">
+                  <CheckCircle2 className="w-10 h-10 text-green-400" />
                 </div>
-                <h3 className="text-2xl font-bold text-white mb-2">Pedido Criado com Sucesso!</h3>
-                <p className="text-gray-400 text-sm mb-2 leading-relaxed max-w-[280px]">
-                  Seu pedido foi registrado no sistema com status:
+                <h3 className="text-2xl font-bold text-white mb-2">🎉 Pagamento Confirmado!</h3>
+                <p className="text-gray-300 text-sm mb-2 leading-relaxed max-w-[300px]">
+                  Seu pedido foi realizado e o pagamento foi aprovado com sucesso!
                 </p>
-                <div className="inline-block bg-amber-500/10 border border-amber-500/20 text-amber-400 px-3 py-1 rounded-full text-xs font-bold mb-6 font-mono">
-                  ● Aguardando Pagamento
+                <div className="inline-block bg-green-500/15 border border-green-500/30 text-green-400 px-4 py-1.5 rounded-full text-xs font-bold mb-6 font-mono">
+                  ● Status: Pagamento Aprovado
                 </div>
-                <p className="text-gray-500 text-xs mb-8 max-w-[280px]">
-                  O vendedor recebeu seus dados de entrega e aguardará a confirmação do pagamento.
+                <p className="text-gray-400 text-xs mb-8 max-w-[280px]">
+                  O vendedor já recebeu a confirmação e iniciará o envio para o endereço informado.
                 </p>
                 <button
                   onClick={closeCheckout}
-                  className="w-full bg-white text-black font-bold py-4 rounded-full uppercase tracking-widest text-sm active:scale-95 transition-transform"
+                  className="w-full bg-[#FF5A36] hover:bg-[#e04825] text-white font-bold py-4 rounded-full uppercase tracking-widest text-sm active:scale-95 transition-transform shadow-lg shadow-[#FF5A36]/30"
                 >
                   Voltar para a Live
                 </button>

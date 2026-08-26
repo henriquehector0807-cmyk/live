@@ -4,7 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { 
   Bot, Video, Package, LogOut, Key, Cpu, Sparkles, Sliders, CheckCircle2, 
   AlertCircle, Play, RefreshCw, Send, Check, Settings, ShieldCheck, Eye, EyeOff, 
-  MessageSquare, Clock, Zap, HelpCircle, FileText, Wrench
+  MessageSquare, Clock, Zap, HelpCircle, FileText, Wrench, CreditCard
 } from "lucide-react";
 
 export default function DashboardAiBot() {
@@ -317,6 +317,10 @@ export default function DashboardAiBot() {
           <Link to="/painel/bot-ia" className="flex items-center space-x-3 px-4 py-3 bg-[#FF5A36] text-white rounded-lg font-bold shadow-lg shadow-[#FF5A36]/20">
             <Bot className="w-5 h-5" />
             <span>Bot IA</span>
+          </Link>
+          <Link to="/painel/pagamentos" className="flex items-center space-x-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg font-bold transition-colors">
+            <CreditCard className="w-5 h-5" />
+            <span>Pagamentos</span>
           </Link>
           <Link to="/painel/ferramentas" className="flex items-center space-x-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg font-bold transition-colors">
             <Wrench className="w-5 h-5" />

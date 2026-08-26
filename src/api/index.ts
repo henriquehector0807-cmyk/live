@@ -7,10 +7,13 @@ import { eq, and, desc, asc } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { LocalVideoStorageService, SupabaseVideoStorageService, videoUploadMiddleware, imageUploadMiddleware } from "../services/videoStorageService";
 import { aiRouter } from "./ai";
+import { paymentsRouter } from "./mercadopago";
 import { requireAuth, signAuthToken } from "./auth";
 
 export const apiRouter = express.Router();
 apiRouter.use("/ai", aiRouter);
+apiRouter.use("/payments", paymentsRouter);
+apiRouter.use(paymentsRouter);
 
 // Configure Video Service based on Environment Variables
 const SUPABASE_URL = process.env.SUPABASE_URL;

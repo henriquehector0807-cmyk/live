@@ -1,6 +1,6 @@
 import { apiRouter } from "./index";
 import { db } from "../db/index";
-import { lives, videoEvents, visitors, chatMessages, orders, products, liveProducts, liveProductTimeline } from "../db/schema";
+import { lives, videoEvents, visitors, chatMessages, orders, products, liveProducts, liveProductTimeline, paymentSettings } from "../db/schema";
 import { eq, and, asc } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 
@@ -17,7 +17,19 @@ apiRouter.get("/public/live/:slug", async (req, res) => {
       .from(liveProductTimeline)
       .innerJoin(products, eq(liveProductTimeline.productId, products.id))
       .where(eq(liveProductTimeline.liveId, live[0].id));
-    res.json({ live: live[0], events, products: attached.map((row) => row.product), timeline: timeline.map((row) => ({ ...row.timeline, product: row.product })) });
+
+    // Check if live owner has Mercado Pago active
+    const userPayment = await db.select().from(paymentSettings).where(eq(paymentSettings.userId, live[0].userId)).limit(1);
+    const envToken = process.env.MERCADOPAGO_ACCESS_TOKEN;
+    const isMpActive = (userPayment.length > 0 && userPayment[0].isEnabled === 1 && !!userPayment[0].mpAccessToken) || (!!envToken && (!userPayment.length || userPayment[0].isEnabled === 1));
+
+    res.json({
+      live: live[0],
+      events,
+      products: attached.map((row) => row.product),
+      timeline: timeline.map((row) => ({ ...row.timeline, product: row.product })),
+      mercadoPagoEnabled: isMpActive,
+    });
   } catch (error) {
     res.status(500).json({ error: "Erro ao buscar live pública" });
   }

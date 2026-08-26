@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { Play, Plus, Video, LogOut, ExternalLink, Package, Edit, Bot, Wrench, BarChart3 } from "lucide-react";
+import { Play, Plus, Video, LogOut, ExternalLink, Package, Edit, Bot, Wrench, BarChart3, CreditCard } from "lucide-react";
 
 export default function Dashboard() {
   const { user, logout, loading } = useAuth();
@@ -45,6 +45,10 @@ export default function Dashboard() {
           <Link to="/painel/bot-ia" className="flex items-center space-x-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg font-bold transition-colors">
             <Bot className="w-5 h-5" />
             <span>Bot IA</span>
+          </Link>
+          <Link to="/painel/pagamentos" className="flex items-center space-x-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg font-bold transition-colors">
+            <CreditCard className="w-5 h-5" />
+            <span>Pagamentos</span>
           </Link>
           <Link to="/painel/ferramentas" className="flex items-center space-x-3 px-4 py-3 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg font-bold transition-colors">
             <Wrench className="w-5 h-5" />

@@ -310,12 +310,18 @@ export default function LiveEditor() {
     loadOrders();
   };
 
-  const ordersBadge = (status: string) => {
-    if (status === "confirmed") return "bg-green-500/20 text-green-400 border border-green-500/30";
+  const ordersBadge = (status: string, paymentStatus?: string) => {
+    if (status === "confirmed" || paymentStatus === "paid") return "bg-green-500/20 text-green-400 border border-green-500/30";
     if (status === "cancelled") return "bg-gray-500/20 text-gray-400 border border-gray-500/30";
     return "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30";
   };
-  const ordersLabel = (status: string) => ({ confirmed: "Confirmado", cancelled: "Cancelado", pending_payment: "Aguardando Pagto" }[status] || status);
+  const ordersLabel = (status: string, paymentStatus?: string, paymentMethod?: string) => {
+    if (paymentStatus === "paid" || status === "confirmed") {
+      return paymentMethod === "pix" ? "Pago (PIX)" : "Confirmado";
+    }
+    if (status === "cancelled") return "Cancelado";
+    return "Aguardando Pagto";
+  };
 
   // ── Chat ──────────────────────────────────────────────────────
 
@@ -795,16 +801,28 @@ export default function LiveEditor() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap mb-1">
                             <p className="font-bold text-white text-sm">{order.buyerName}</p>
-                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ordersBadge(order.status)}`}>{ordersLabel(order.status)}</span>
+                            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${ordersBadge(order.status, order.paymentStatus)}`}>
+                              {ordersLabel(order.status, order.paymentStatus, order.paymentMethod)}
+                            </span>
+                            {order.paymentMethod === "pix" && (
+                              <span className="text-[10px] bg-green-500/15 text-green-400 border border-green-500/30 px-1.5 py-0.5 rounded font-mono font-bold">PIX</span>
+                            )}
                           </div>
                           <p className="text-gray-400 text-xs">{order.product?.name || order.productId} · {order.quantity}x · <span className="text-white font-bold">R$ {Number(order.total || 0).toFixed(2)}</span></p>
+                          {order.customerCpf && <p className="text-gray-500 text-xs mt-0.5">🪪 CPF: {order.customerCpf}</p>}
                           {order.customerPhone && <p className="text-gray-500 text-xs mt-0.5">📞 {order.customerPhone}</p>}
                           {order.customerEmail && <p className="text-gray-500 text-xs">✉️ {order.customerEmail}</p>}
+                          {order.ticketUrl && (
+                            <a href={order.ticketUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:underline inline-flex items-center gap-1 mt-1">
+                              <span>Comprovante Mercado Pago</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
                         </div>
                         <div className="shrink-0 flex flex-col gap-2 items-end">
                           <p className="text-xs text-gray-500">{order.createdAt ? new Date(order.createdAt).toLocaleString("pt-BR") : ""}</p>
                           <div className="flex gap-2">
-                            {order.status !== "confirmed" && (
+                            {order.status !== "confirmed" && order.paymentStatus !== "paid" && (
                               <button onClick={() => updateOrderStatus(order.id, "confirmed")} className="flex items-center gap-1 bg-green-500/20 hover:bg-green-500/40 text-green-400 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors">
                                 <CheckCircle2 className="w-3.5 h-3.5" /> Confirmar
                               </button>
