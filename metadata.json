@@ -1,0 +1,6 @@
+{
+  "name": "Live Commerce Platform",
+  "description": "Uma plataforma completa de Live Commerce com vídeos sob demanda simulando lives, chat interativo com bot em tempo real (OpenRouter IA), sistema de pedidos e dashboard de influencer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
