@@ -64,8 +64,8 @@ function sanitizeUrl(urlString?: string | null): string | null {
 }
 
 // --- UPLOAD IMAGES / FILES ---
-apiRouter.post("/upload", requireAuth, (req, res) => {
-  imageUploadMiddleware.single("file")(req, res, (err) => {
+apiRouter.post("/upload", requireAuth, (req: any, res: any) => {
+  (imageUploadMiddleware.single("file") as any)(req, res, (err: any) => {
     if (err) return res.status(400).json({ error: err.message || "Erro no upload da imagem" });
     if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado" });
     const fileUrl = `/uploads/${encodeURIComponent(req.file.filename)}`;
@@ -73,8 +73,8 @@ apiRouter.post("/upload", requireAuth, (req, res) => {
   });
 });
 
-apiRouter.post("/upload/image", requireAuth, (req, res) => {
-  imageUploadMiddleware.single("image")(req, res, (err) => {
+apiRouter.post("/upload/image", requireAuth, (req: any, res: any) => {
+  (imageUploadMiddleware.single("image") as any)(req, res, (err: any) => {
     if (err) return res.status(400).json({ error: err.message || "Erro no upload da imagem" });
     if (!req.file) return res.status(400).json({ error: "Nenhuma imagem enviada" });
     const fileUrl = `/uploads/${encodeURIComponent(req.file.filename)}`;
@@ -82,8 +82,8 @@ apiRouter.post("/upload/image", requireAuth, (req, res) => {
   });
 });
 
-apiRouter.post("/products/upload-image", requireAuth, (req, res) => {
-  imageUploadMiddleware.single("image")(req, res, (err) => {
+apiRouter.post("/products/upload-image", requireAuth, (req: any, res: any) => {
+  (imageUploadMiddleware.single("image") as any)(req, res, (err: any) => {
     if (err) return res.status(400).json({ error: err.message || "Erro no upload da imagem" });
     if (!req.file) return res.status(400).json({ error: "Nenhuma imagem enviada" });
     const fileUrl = `/uploads/${encodeURIComponent(req.file.filename)}`;
@@ -361,7 +361,7 @@ apiRouter.get("/lives/:id", requireAuth, async (req, res) => {
 });
 
 // --- UPLOAD VIDEO ---
-apiRouter.post("/videos/upload", requireAuth, videoUploadMiddleware.single("video"), async (req, res) => {
+apiRouter.post("/videos/upload", requireAuth, videoUploadMiddleware.single("video") as any, async (req: any, res: any) => {
   if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado" });
   try {
     const result = await videoService.uploadVideo(req.file);

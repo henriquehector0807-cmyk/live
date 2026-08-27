@@ -17,14 +17,115 @@ const sqliteClient = createClient({
 
 // Auto-migrate new columns and tables if needed
 (async () => {
-  const migrations = [
-    "ALTER TABLE products ADD COLUMN payment_url TEXT",
-    "ALTER TABLE orders ADD COLUMN product_id TEXT",
-    "ALTER TABLE orders ADD COLUMN customer_phone TEXT",
-    "ALTER TABLE orders ADD COLUMN customer_email TEXT",
-    "ALTER TABLE orders ADD COLUMN shipping_address TEXT",
-    "ALTER TABLE orders ADD COLUMN payment_status TEXT DEFAULT 'pending_payment'",
-    "ALTER TABLE lives ADD COLUMN bot_enabled INTEGER DEFAULT 1",
+  const tableCreations = [
+    `CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      password TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS lives (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      title TEXT NOT NULL,
+      description TEXT,
+      product_name TEXT NOT NULL,
+      product_price REAL NOT NULL,
+      product_image TEXT,
+      video_url TEXT NOT NULL,
+      status TEXT DEFAULT 'draft',
+      bot_enabled INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS video_events (
+      id TEXT PRIMARY KEY,
+      live_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      time_seconds INTEGER NOT NULL,
+      message TEXT NOT NULL,
+      buyer_name TEXT,
+      enabled INTEGER DEFAULT 1
+    )`,
+    `CREATE TABLE IF NOT EXISTS visitors (
+      id TEXT PRIMARY KEY,
+      live_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      name TEXT,
+      buyer_status TEXT DEFAULT 'visitor',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS chat_messages (
+      id TEXT PRIMARY KEY,
+      live_id TEXT NOT NULL,
+      visitor_id TEXT,
+      sender_name TEXT NOT NULL,
+      message TEXT NOT NULL,
+      sender_type TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS products (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      sku TEXT,
+      category TEXT,
+      image_url TEXT,
+      price REAL NOT NULL,
+      promotional_price REAL,
+      payment_url TEXT,
+      stock INTEGER DEFAULT 0,
+      minimum_stock INTEGER DEFAULT 0,
+      shipping_price REAL DEFAULT 0,
+      delivery_time TEXT,
+      status TEXT DEFAULT 'active',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS orders (
+      id TEXT PRIMARY KEY,
+      live_id TEXT NOT NULL,
+      visitor_id TEXT NOT NULL,
+      product_id TEXT,
+      buyer_name TEXT NOT NULL,
+      customer_phone TEXT,
+      customer_email TEXT,
+      shipping_address TEXT,
+      quantity INTEGER NOT NULL,
+      unit_price REAL NOT NULL,
+      total REAL NOT NULL,
+      status TEXT DEFAULT 'pending_payment',
+      payment_status TEXT DEFAULT 'pending_payment',
+      customer_cpf TEXT,
+      mp_payment_id TEXT,
+      mp_status TEXT,
+      payment_method TEXT DEFAULT 'pix',
+      qr_code TEXT,
+      qr_code_base64 TEXT,
+      ticket_url TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS live_products (
+      id TEXT PRIMARY KEY,
+      live_id TEXT NOT NULL,
+      product_id TEXT NOT NULL,
+      is_primary INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS live_product_timeline (
+      id TEXT PRIMARY KEY,
+      live_id TEXT NOT NULL,
+      product_id TEXT NOT NULL,
+      start_time INTEGER NOT NULL,
+      end_time INTEGER NOT NULL,
+      display_order INTEGER DEFAULT 0,
+      show_on_video INTEGER DEFAULT 1,
+      show_product_card INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )`,
     `CREATE TABLE IF NOT EXISTS ai_settings (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -70,13 +171,6 @@ const sqliteClient = createClient({
       error_message TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )`,
-    "ALTER TABLE orders ADD COLUMN customer_cpf TEXT",
-    "ALTER TABLE orders ADD COLUMN mp_payment_id TEXT",
-    "ALTER TABLE orders ADD COLUMN mp_status TEXT",
-    "ALTER TABLE orders ADD COLUMN payment_method TEXT DEFAULT 'pix'",
-    "ALTER TABLE orders ADD COLUMN qr_code TEXT",
-    "ALTER TABLE orders ADD COLUMN qr_code_base64 TEXT",
-    "ALTER TABLE orders ADD COLUMN ticket_url TEXT",
     `CREATE TABLE IF NOT EXISTS payment_settings (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -87,7 +181,33 @@ const sqliteClient = createClient({
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     )`
   ];
-  for (const sql of migrations) {
+
+  for (const sql of tableCreations) {
+    try {
+      await sqliteClient.execute(sql);
+    } catch (e) {
+      console.warn("Table creation note:", e);
+    }
+  }
+
+  const columnMigrations = [
+    "ALTER TABLE products ADD COLUMN payment_url TEXT",
+    "ALTER TABLE orders ADD COLUMN product_id TEXT",
+    "ALTER TABLE orders ADD COLUMN customer_phone TEXT",
+    "ALTER TABLE orders ADD COLUMN customer_email TEXT",
+    "ALTER TABLE orders ADD COLUMN shipping_address TEXT",
+    "ALTER TABLE orders ADD COLUMN payment_status TEXT DEFAULT 'pending_payment'",
+    "ALTER TABLE lives ADD COLUMN bot_enabled INTEGER DEFAULT 1",
+    "ALTER TABLE orders ADD COLUMN customer_cpf TEXT",
+    "ALTER TABLE orders ADD COLUMN mp_payment_id TEXT",
+    "ALTER TABLE orders ADD COLUMN mp_status TEXT",
+    "ALTER TABLE orders ADD COLUMN payment_method TEXT DEFAULT 'pix'",
+    "ALTER TABLE orders ADD COLUMN qr_code TEXT",
+    "ALTER TABLE orders ADD COLUMN qr_code_base64 TEXT",
+    "ALTER TABLE orders ADD COLUMN ticket_url TEXT"
+  ];
+
+  for (const sql of columnMigrations) {
     try {
       await sqliteClient.execute(sql);
     } catch {}
