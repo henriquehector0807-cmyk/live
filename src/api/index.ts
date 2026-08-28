@@ -6,6 +6,7 @@ import { users, lives, videoEvents, visitors, chatMessages, orders, products, li
 import { eq, and, desc, asc } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { LocalVideoStorageService, SupabaseVideoStorageService, videoUploadMiddleware, imageUploadMiddleware } from "../services/videoStorageService";
+import { getSupabaseClient, checkSupabaseConnection, uploadImageToSupabase } from "../services/supabaseClient";
 import { aiRouter } from "./ai";
 import { paymentsRouter } from "./mercadopago";
 import { requireAuth, signAuthToken } from "./auth";
@@ -156,9 +157,12 @@ apiRouter.get("/system/db-status", async (req, res) => {
       db.select().from(orders),
     ]);
 
+    const supabaseStatus = await checkSupabaseConnection();
+
     res.json({
       status: "connected",
       database: "libsql-sqlite",
+      supabase: supabaseStatus,
       tables: {
         users: userCount.length,
         lives: liveCount.length,
@@ -171,6 +175,20 @@ apiRouter.get("/system/db-status", async (req, res) => {
     res.status(500).json({
       status: "error",
       message: error?.message || "Falha ao consultar banco de dados",
+    });
+  }
+});
+
+// Dedicated Supabase status check
+apiRouter.get("/system/supabase-status", async (req, res) => {
+  try {
+    const status = await checkSupabaseConnection();
+    res.json(status);
+  } catch (error: any) {
+    res.status(500).json({
+      configured: false,
+      connected: false,
+      error: error?.message || "Erro desconhecido ao testar Supabase",
     });
   }
 });
@@ -192,29 +210,53 @@ function sanitizeUrl(urlString?: string | null): string | null {
 
 // --- UPLOAD IMAGES / FILES ---
 apiRouter.post("/upload", requireAuth, (req: any, res: any) => {
-  (imageUploadMiddleware.single("file") as any)(req, res, (err: any) => {
-    if (err) return res.status(400).json({ error: err.message || "Erro no upload da imagem" });
+  (imageUploadMiddleware.single("file") as any)(req, res, async (err: any) => {
+    if (err) return res.status(400).json({ error: err.message || "Erro no upload do arquivo" });
     if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado" });
+    
+    try {
+      const supabaseUrl = await uploadImageToSupabase(req.file);
+      if (supabaseUrl) {
+        return res.json({ url: supabaseUrl, filename: req.file.filename, provider: "supabase" });
+      }
+    } catch {}
+
     const fileUrl = `/uploads/${encodeURIComponent(req.file.filename)}`;
-    res.json({ url: fileUrl, filename: req.file.filename });
+    res.json({ url: fileUrl, filename: req.file.filename, provider: "local" });
   });
 });
 
 apiRouter.post("/upload/image", requireAuth, (req: any, res: any) => {
-  (imageUploadMiddleware.single("image") as any)(req, res, (err: any) => {
+  (imageUploadMiddleware.single("image") as any)(req, res, async (err: any) => {
     if (err) return res.status(400).json({ error: err.message || "Erro no upload da imagem" });
     if (!req.file) return res.status(400).json({ error: "Nenhuma imagem enviada" });
+    
+    try {
+      const supabaseUrl = await uploadImageToSupabase(req.file);
+      if (supabaseUrl) {
+        return res.json({ url: supabaseUrl, filename: req.file.filename, provider: "supabase" });
+      }
+    } catch {}
+
     const fileUrl = `/uploads/${encodeURIComponent(req.file.filename)}`;
-    res.json({ url: fileUrl, filename: req.file.filename });
+    res.json({ url: fileUrl, filename: req.file.filename, provider: "local" });
   });
 });
 
 apiRouter.post("/products/upload-image", requireAuth, (req: any, res: any) => {
-  (imageUploadMiddleware.single("image") as any)(req, res, (err: any) => {
+  (imageUploadMiddleware.single("image") as any)(req, res, async (err: any) => {
     if (err) return res.status(400).json({ error: err.message || "Erro no upload da imagem" });
     if (!req.file) return res.status(400).json({ error: "Nenhuma imagem enviada" });
+    
+    try {
+      const supabaseUrl = await uploadImageToSupabase(req.file);
+      if (supabaseUrl) {
+        return res.json({ url: supabaseUrl, filename: req.file.filename, provider: "supabase" });
+      }
+    } catch {}
+
     const fileUrl = `/uploads/${encodeURIComponent(req.file.filename)}`;
-    res.json({ url: fileUrl, filename: req.file.filename });
+    res.json({ url: fileUrl, filename: req.file.filename, provider: "local" });
   });
 });
 

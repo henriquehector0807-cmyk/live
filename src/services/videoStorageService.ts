@@ -18,12 +18,32 @@ export interface VideoStorageProvider {
 export class SupabaseVideoStorageService implements VideoStorageProvider {
   private supabase: SupabaseClient;
   private bucketName = "videos";
+  private bucketChecked = false;
 
-  constructor(supabaseUrl: string, supabaseKey: string) {
+  constructor(supabaseUrl: string, supabaseKey: string, bucketName: string = "videos") {
     this.supabase = createClient(supabaseUrl, supabaseKey);
+    this.bucketName = bucketName;
+  }
+
+  private async ensureBucket() {
+    if (this.bucketChecked) return;
+    try {
+      const { data: buckets } = await this.supabase.storage.listBuckets();
+      const exists = buckets?.some((b) => b.name === this.bucketName);
+      if (!exists) {
+        await this.supabase.storage.createBucket(this.bucketName, {
+          public: true,
+        });
+      }
+      this.bucketChecked = true;
+    } catch {
+      // Non-critical, proceed with upload attempt
+      this.bucketChecked = true;
+    }
   }
 
   async uploadVideo(file: Express.Multer.File): Promise<VideoUploadResult> {
+    await this.ensureBucket();
     const fileExt = path.extname(file.originalname);
     const fileName = `${uuidv4()}${fileExt}`;
     const fileBuffer = fs.readFileSync(file.path);
@@ -31,15 +51,20 @@ export class SupabaseVideoStorageService implements VideoStorageProvider {
     const { error } = await this.supabase.storage
       .from(this.bucketName)
       .upload(fileName, fileBuffer, {
-        contentType: file.mimetype,
-        upsert: false
+        contentType: file.mimetype || "video/mp4",
+        upsert: true,
       });
 
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase Storage upload error:", error);
+      throw error;
+    }
 
     // Remove temporary local file after successful upload
     if (fs.existsSync(file.path)) {
-      fs.unlinkSync(file.path);
+      try {
+        fs.unlinkSync(file.path);
+      } catch {}
     }
 
     const { data: publicData } = this.supabase.storage
@@ -48,7 +73,7 @@ export class SupabaseVideoStorageService implements VideoStorageProvider {
 
     return {
       url: publicData.publicUrl,
-      videoId: fileName
+      videoId: fileName,
     };
   }
 
