@@ -279,31 +279,17 @@ export default function DashboardTools() {
                   <RefreshCw className={`w-4 h-4 ${dbStatusLoading ? "animate-spin" : ""}`} />
                 </button>
               </div>
-              <p className="text-gray-500 text-xs mb-4">Monitoramento do banco SQLite local e integração com Supabase.</p>
+              <p className="text-gray-500 text-xs mb-4">Gerenciamento do banco de dados e integração com Supabase.</p>
 
               <div className="space-y-3">
-                {/* Local DB status */}
-                <div className="bg-[#1A1A1A] border border-white/5 rounded-xl p-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <Server className="w-4 h-4 text-orange-400" />
-                    <div>
-                      <p className="text-xs font-bold text-white">Banco Local (SQLite / LibSQL)</p>
-                      <p className="text-[11px] text-gray-500">Persistência ativa em data/local.db</p>
-                    </div>
-                  </div>
-                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Conectado
-                  </span>
-                </div>
-
                 {/* Supabase status */}
                 <div className="bg-[#1A1A1A] border border-white/5 rounded-xl p-3">
                   <div className="flex items-center justify-between mb-1.5">
                     <div className="flex items-center gap-2.5">
                       <Cloud className="w-4 h-4 text-emerald-400" />
                       <div>
-                        <p className="text-xs font-bold text-white">Supabase</p>
-                        <p className="text-[11px] text-gray-500">Storage de Vídeos e Imagens</p>
+                        <p className="text-xs font-bold text-white">Supabase Cloud</p>
+                        <p className="text-[11px] text-gray-500">Banco de Dados PostgreSQL e Storage</p>
                       </div>
                     </div>
                     {dbStatus?.supabase?.connected ? (
@@ -316,7 +302,7 @@ export default function DashboardTools() {
                       </span>
                     ) : (
                       <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-500/20 text-gray-400">
-                        Local Fallback
+                        Pendente
                       </span>
                     )}
                   </div>
@@ -325,6 +311,61 @@ export default function DashboardTools() {
                       {dbStatus.supabase.message}
                     </p>
                   )}
+                  {dbStatus?.supabase?.storageBuckets && dbStatus.supabase.storageBuckets.length > 0 && (
+                    <div className="mt-2 text-[11px] text-emerald-400/80 bg-emerald-950/30 border border-emerald-500/20 rounded-lg p-2">
+                      Buckets detectados: {dbStatus.supabase.storageBuckets.join(", ")}
+                    </div>
+                  )}
+                </div>
+
+                {/* Schema copy guide */}
+                <div className="bg-[#1A1A1A] border border-white/5 rounded-xl p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold text-gray-300 flex items-center gap-1.5">
+                      <Database className="w-3.5 h-3.5 text-orange-400" /> Esquema SQL Supabase
+                    </span>
+                    <a
+                      href="https://supabase.com/dashboard"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-[#FF5A36] hover:underline flex items-center gap-1"
+                    >
+                      Supabase <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                  <p className="text-[11px] text-gray-400 mb-3">
+                    Arquivo <code className="text-white bg-black/40 px-1 py-0.5 rounded">supabase_schema.sql</code> pronto com todas as tabelas (users, lives, products, orders, chat, etc).
+                  </p>
+                  <button
+                    onClick={() => {
+                      fetch("/api/system/supabase-schema")
+                        .then((res) => {
+                          if (res.ok) return res.text();
+                          throw new Error();
+                        })
+                        .catch(() => "Arquivo supabase_schema.sql disponível na raiz do projeto.")
+                        .then((text) => {
+                          navigator.clipboard.writeText(text);
+                          setCopiedId("supabase_sql");
+                          setTimeout(() => setCopiedId(null), 2500);
+                        });
+                    }}
+                    className={`w-full py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-colors ${
+                      copiedId === "supabase_sql"
+                        ? "bg-emerald-600 text-white"
+                        : "bg-white/10 hover:bg-white/20 text-white"
+                    }`}
+                  >
+                    {copiedId === "supabase_sql" ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" /> Script SQL Copiado!
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" /> Copiar Script SQL do Supabase
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
             </div>

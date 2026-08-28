@@ -1,6 +1,7 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import path from "path";
+import fs from "fs";
 import { db } from "../db/index";
 import { users, lives, videoEvents, visitors, chatMessages, orders, products, liveProducts, liveProductTimeline } from "../db/schema";
 import { eq, and, desc, asc } from "drizzle-orm";
@@ -190,6 +191,21 @@ apiRouter.get("/system/supabase-status", async (req, res) => {
       connected: false,
       error: error?.message || "Erro desconhecido ao testar Supabase",
     });
+  }
+});
+
+// Dedicated Supabase schema text retrieval
+apiRouter.get("/system/supabase-schema", (req, res) => {
+  try {
+    const schemaPath = path.join(process.cwd(), "supabase_schema.sql");
+    if (fs.existsSync(schemaPath)) {
+      const content = fs.readFileSync(schemaPath, "utf-8");
+      res.setHeader("Content-Type", "text/plain");
+      return res.send(content);
+    }
+    return res.status(404).send("Arquivo supabase_schema.sql não encontrado");
+  } catch (err: any) {
+    return res.status(500).send("Erro ao ler schema");
   }
 });
 

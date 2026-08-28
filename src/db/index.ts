@@ -10,9 +10,13 @@ if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-// LibSQL local file client
+// LibSQL client (Turso Cloud Database or local SQLite file fallback)
+const dbUrl = process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || "file:data/local.db";
+const dbAuthToken = process.env.TURSO_AUTH_TOKEN || process.env.LIBSQL_AUTH_TOKEN;
+
 const sqliteClient = createClient({
-  url: "file:data/local.db",
+  url: dbUrl,
+  authToken: dbAuthToken,
 });
 
 // Auto-migrate new columns and tables if needed

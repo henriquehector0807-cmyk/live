@@ -1,14 +1,16 @@
 # Deploy do Live Replay Commerce
 
-## Opcao recomendada
+## Opcao recomendada com Supabase
 
-Publique primeiro no GitHub e depois conecte o repositorio a uma plataforma de hospedagem.
+Para utilizar o **Supabase** como seu banco de dados e armazenamento principal:
 
-Para a aplicacao ficar usavel em producao, configure servicos persistentes:
-
-- Banco: Turso/LibSQL remoto, Supabase Postgres ou outro banco gerenciado.
-- Videos/uploads: Supabase Storage, Cloudflare R2, S3 ou equivalente.
-- Variaveis de ambiente: configurar no painel da plataforma, nunca commitar `.env`.
+1. Acesse seu projeto no [Supabase Dashboard](https://supabase.com/dashboard).
+2. Abra o menu **SQL Editor** e execute o script contido em `supabase_schema.sql` (você também pode copiá-lo diretamente no Painel de Ferramentas da aplicação).
+3. No menu **Project Settings > API**, copie:
+   - **Project URL** -> `SUPABASE_URL`
+   - **anon / public key** -> `SUPABASE_ANON_KEY`
+4. Configure essas duas variáveis de ambiente no arquivo `.env` ou nas configurações da plataforma onde hospedar.
+5. Os buckets de Storage (`videos` e `images`) e as tabelas (`users`, `lives`, `products`, `orders`, `chat_messages`, etc.) serão criados automaticamente.
 
 ## Por que Vercel precisa de ajustes
 
