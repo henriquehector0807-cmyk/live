@@ -5,7 +5,8 @@ import {
   Wrench, Video, Package, Bot, LogOut, Link2, Copy, Check,
   BarChart3, Users, ShoppingCart, DollarSign, MessageSquare,
   Download, Trash2, RefreshCw, ExternalLink, AlertCircle,
-  Radio, Clock, TrendingUp, Eye, CheckCircle2, CreditCard
+  Radio, Clock, TrendingUp, Eye, CheckCircle2, CreditCard,
+  Database, Cloud, Server
 } from "lucide-react";
 
 const AUTH_HEADER = () => ({ Authorization: `Bearer ${localStorage.getItem("token")}`, "Content-Type": "application/json" });
@@ -46,9 +47,27 @@ export default function DashboardTools() {
 
   const [csvLoading, setCsvLoading] = useState(false);
 
+  const [dbStatus, setDbStatus] = useState<any>(null);
+  const [dbStatusLoading, setDbStatusLoading] = useState(false);
+
   useEffect(() => { if (!loading && !user) navigate("/login"); }, [user, loading, navigate]);
-  useEffect(() => { if (user) loadLives(); }, [user]);
+  useEffect(() => { if (user) { loadLives(); loadDbStatus(); } }, [user]);
   useEffect(() => { if (selectedLiveId) loadStats(selectedLiveId); }, [selectedLiveId]);
+
+  const loadDbStatus = async () => {
+    setDbStatusLoading(true);
+    try {
+      const res = await fetch("/api/system/db-status");
+      if (res.ok) {
+        const data = await res.json();
+        setDbStatus(data);
+      }
+    } catch (e) {
+      console.error("DB Status error:", e);
+    } finally {
+      setDbStatusLoading(false);
+    }
+  };
 
   const loadLives = async () => {
     setLivesLoading(true);
@@ -243,6 +262,71 @@ export default function DashboardTools() {
               >
                 {csvLoading ? <><RefreshCw className="w-4 h-4 animate-spin" />Gerando CSV...</> : <><Download className="w-4 h-4" />Exportar CSV</>}
               </button>
+            </div>
+
+            {/* Supabase & Database Connection Status */}
+            <div className="bg-[#121212] border border-white/10 rounded-2xl p-6">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-bold flex items-center gap-2">
+                  <Database className="w-5 h-5 text-[#FF5A36]" />Banco & Supabase
+                </h2>
+                <button
+                  onClick={loadDbStatus}
+                  disabled={dbStatusLoading}
+                  className="text-gray-500 hover:text-white transition-colors"
+                  title="Atualizar status"
+                >
+                  <RefreshCw className={`w-4 h-4 ${dbStatusLoading ? "animate-spin" : ""}`} />
+                </button>
+              </div>
+              <p className="text-gray-500 text-xs mb-4">Monitoramento do banco SQLite local e integração com Supabase.</p>
+
+              <div className="space-y-3">
+                {/* Local DB status */}
+                <div className="bg-[#1A1A1A] border border-white/5 rounded-xl p-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <Server className="w-4 h-4 text-orange-400" />
+                    <div>
+                      <p className="text-xs font-bold text-white">Banco Local (SQLite / LibSQL)</p>
+                      <p className="text-[11px] text-gray-500">Persistência ativa em data/local.db</p>
+                    </div>
+                  </div>
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Conectado
+                  </span>
+                </div>
+
+                {/* Supabase status */}
+                <div className="bg-[#1A1A1A] border border-white/5 rounded-xl p-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="flex items-center gap-2.5">
+                      <Cloud className="w-4 h-4 text-emerald-400" />
+                      <div>
+                        <p className="text-xs font-bold text-white">Supabase</p>
+                        <p className="text-[11px] text-gray-500">Storage de Vídeos e Imagens</p>
+                      </div>
+                    </div>
+                    {dbStatus?.supabase?.connected ? (
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Conectado
+                      </span>
+                    ) : dbStatus?.supabase?.configured ? (
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" /> Configurado
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-500/20 text-gray-400">
+                        Local Fallback
+                      </span>
+                    )}
+                  </div>
+                  {dbStatus?.supabase?.message && (
+                    <p className="text-[11px] text-gray-400 mt-2 border-t border-white/5 pt-2">
+                      {dbStatus.supabase.message}
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 

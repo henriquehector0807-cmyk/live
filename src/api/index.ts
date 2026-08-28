@@ -6,6 +6,7 @@ import { users, lives, videoEvents, visitors, chatMessages, orders, products, li
 import { eq, and, desc, asc } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { LocalVideoStorageService, SupabaseVideoStorageService, videoUploadMiddleware, imageUploadMiddleware } from "../services/videoStorageService";
+import { getSupabaseClient, checkSupabaseConnection, uploadImageToSupabase } from "../services/supabaseClient";
 import { aiRouter } from "./ai";
 import { paymentsRouter } from "./mercadopago";
 import { requireAuth, signAuthToken } from "./auth";
@@ -28,8 +29,11 @@ const videoService = (SUPABASE_URL && SUPABASE_KEY && isValidSupabaseUrl)
 apiRouter.post("/auth/register", async (req, res) => {
   try {
     const { name, email, password } = req.body;
-    if (!name || !email || !password || String(password).length < 6) return res.status(400).json({ error: "Nome, email e senha válida são obrigatórios" });
-    const existing = await db.select().from(users).where(eq(users.email, String(email).toLowerCase())).limit(1);
+    if (!name || !email || !password || String(password).length < 6) {
+      return res.status(400).json({ error: "Nome, email e senha com no mínimo 6 caracteres são obrigatórios" });
+    }
+    const cleanEmail = String(email).trim().toLowerCase();
+    const existing = await db.select().from(users).where(eq(users.email, cleanEmail)).limit(1);
     if (existing.length > 0) return res.status(400).json({ error: "Email já cadastrado" });
 
     const hashedPassword = await bcrypt.hash(password, 10);
@@ -38,14 +42,155 @@ apiRouter.post("/auth/register", async (req, res) => {
     await db.insert(users).values({
       id: userId,
       name: String(name).trim(),
-      email: String(email).toLowerCase(),
+      email: cleanEmail,
       password: hashedPassword,
     });
 
     const token = signAuthToken(userId);
     res.cookie("token", token, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" });
-    res.status(201).json({ token, user: { id: userId, name: String(name).trim(), email: String(email).toLowerCase() } });
-  } catch { res.status(500).json({ error: "Erro ao registrar" }); }
+    res.status(201).json({ token, user: { id: userId, name: String(name).trim(), email: cleanEmail } });
+  } catch (error) {
+    console.error("Register error:", error);
+    res.status(500).json({ error: "Erro ao registrar usuário" });
+  }
+});
+
+apiRouter.post("/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: "E-mail e senha são obrigatórios" });
+    }
+
+    const cleanEmail = String(email).trim().toLowerCase();
+    const existing = await db.select().from(users).where(eq(users.email, cleanEmail)).limit(1);
+    if (!existing.length) {
+      return res.status(401).json({ error: "Credenciais inválidas" });
+    }
+
+    const user = existing[0];
+    const passwordMatch = await bcrypt.compare(String(password), user.password);
+    if (!passwordMatch) {
+      return res.status(401).json({ error: "Credenciais inválidas" });
+    }
+
+    const token = signAuthToken(user.id);
+    res.cookie("token", token, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" });
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+      },
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    res.status(500).json({ error: "Erro ao realizar login" });
+  }
+});
+
+apiRouter.get("/auth/me", requireAuth, async (req, res) => {
+  try {
+    const userId = (req as any).userId;
+    const userList = await db.select({ id: users.id, name: users.name, email: users.email }).from(users).where(eq(users.id, userId)).limit(1);
+    if (!userList.length) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+    res.json({ user: userList[0] });
+  } catch (error) {
+    res.status(500).json({ error: "Erro ao obter sessão" });
+  }
+});
+
+apiRouter.post("/auth/logout", (req, res) => {
+  res.clearCookie("token");
+  res.json({ success: true, message: "Desconectado com sucesso" });
+});
+
+apiRouter.get("/auth/dev-bypass", async (req, res) => {
+  try {
+    let existingUsers = await db.select().from(users).limit(1);
+    let user = existingUsers[0];
+
+    if (!user) {
+      const defaultId = uuidv4();
+      const defaultPass = await bcrypt.hash("admin123", 10);
+      await db.insert(users).values({
+        id: defaultId,
+        name: "Administrador Live",
+        email: "admin@livecommerce.com",
+        password: defaultPass,
+      });
+      user = {
+        id: defaultId,
+        name: "Administrador Live",
+        email: "admin@livecommerce.com",
+        password: defaultPass,
+        createdAt: new Date().toISOString(),
+      };
+    }
+
+    const token = signAuthToken(user.id);
+    res.cookie("token", token, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production" });
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+      },
+    });
+  } catch (error) {
+    console.error("Dev bypass error:", error);
+    res.status(500).json({ error: "Falha na autenticação automática" });
+  }
+});
+
+// Database health and status check
+apiRouter.get("/system/db-status", async (req, res) => {
+  try {
+    const [userCount, liveCount, productCount, orderCount] = await Promise.all([
+      db.select().from(users),
+      db.select().from(lives),
+      db.select().from(products),
+      db.select().from(orders),
+    ]);
+
+    const supabaseStatus = await checkSupabaseConnection();
+
+    res.json({
+      status: "connected",
+      database: "libsql-sqlite",
+      supabase: supabaseStatus,
+      tables: {
+        users: userCount.length,
+        lives: liveCount.length,
+        products: productCount.length,
+        orders: orderCount.length,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      status: "error",
+      message: error?.message || "Falha ao consultar banco de dados",
+    });
+  }
+});
+
+// Dedicated Supabase status check
+apiRouter.get("/system/supabase-status", async (req, res) => {
+  try {
+    const status = await checkSupabaseConnection();
+    res.json(status);
+  } catch (error: any) {
+    res.status(500).json({
+      configured: false,
+      connected: false,
+      error: error?.message || "Erro desconhecido ao testar Supabase",
+    });
+  }
 });
 
 // Helper to normalize and validate URL (auto-prefixes https:// if missing)
@@ -64,30 +209,54 @@ function sanitizeUrl(urlString?: string | null): string | null {
 }
 
 // --- UPLOAD IMAGES / FILES ---
-apiRouter.post("/upload", requireAuth, (req, res) => {
-  imageUploadMiddleware.single("file")(req, res, (err) => {
-    if (err) return res.status(400).json({ error: err.message || "Erro no upload da imagem" });
+apiRouter.post("/upload", requireAuth, (req: any, res: any) => {
+  (imageUploadMiddleware.single("file") as any)(req, res, async (err: any) => {
+    if (err) return res.status(400).json({ error: err.message || "Erro no upload do arquivo" });
     if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado" });
+    
+    try {
+      const supabaseUrl = await uploadImageToSupabase(req.file);
+      if (supabaseUrl) {
+        return res.json({ url: supabaseUrl, filename: req.file.filename, provider: "supabase" });
+      }
+    } catch {}
+
     const fileUrl = `/uploads/${encodeURIComponent(req.file.filename)}`;
-    res.json({ url: fileUrl, filename: req.file.filename });
+    res.json({ url: fileUrl, filename: req.file.filename, provider: "local" });
   });
 });
 
-apiRouter.post("/upload/image", requireAuth, (req, res) => {
-  imageUploadMiddleware.single("image")(req, res, (err) => {
+apiRouter.post("/upload/image", requireAuth, (req: any, res: any) => {
+  (imageUploadMiddleware.single("image") as any)(req, res, async (err: any) => {
     if (err) return res.status(400).json({ error: err.message || "Erro no upload da imagem" });
     if (!req.file) return res.status(400).json({ error: "Nenhuma imagem enviada" });
+    
+    try {
+      const supabaseUrl = await uploadImageToSupabase(req.file);
+      if (supabaseUrl) {
+        return res.json({ url: supabaseUrl, filename: req.file.filename, provider: "supabase" });
+      }
+    } catch {}
+
     const fileUrl = `/uploads/${encodeURIComponent(req.file.filename)}`;
-    res.json({ url: fileUrl, filename: req.file.filename });
+    res.json({ url: fileUrl, filename: req.file.filename, provider: "local" });
   });
 });
 
-apiRouter.post("/products/upload-image", requireAuth, (req, res) => {
-  imageUploadMiddleware.single("image")(req, res, (err) => {
+apiRouter.post("/products/upload-image", requireAuth, (req: any, res: any) => {
+  (imageUploadMiddleware.single("image") as any)(req, res, async (err: any) => {
     if (err) return res.status(400).json({ error: err.message || "Erro no upload da imagem" });
     if (!req.file) return res.status(400).json({ error: "Nenhuma imagem enviada" });
+    
+    try {
+      const supabaseUrl = await uploadImageToSupabase(req.file);
+      if (supabaseUrl) {
+        return res.json({ url: supabaseUrl, filename: req.file.filename, provider: "supabase" });
+      }
+    } catch {}
+
     const fileUrl = `/uploads/${encodeURIComponent(req.file.filename)}`;
-    res.json({ url: fileUrl, filename: req.file.filename });
+    res.json({ url: fileUrl, filename: req.file.filename, provider: "local" });
   });
 });
 
@@ -236,69 +405,6 @@ apiRouter.delete("/lives/:id", requireAuth, async (req, res) => {
   } catch { res.status(500).json({ error: "Erro ao excluir live" }); }
 });
 
-
-apiRouter.post("/auth/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const user = await db.select().from(users).where(eq(users.email, email)).limit(1);
-    
-    if (user.length === 0 || !(await bcrypt.compare(password, user[0].password))) {
-      return res.status(401).json({ error: "Credenciais inválidas" });
-    }
-
-    const token = signAuthToken(user[0].id);
-    res.cookie("token", token, { httpOnly: true, secure: process.env.NODE_ENV === "production" });
-    res.json({ token, user: { id: user[0].id, name: user[0].name, email: user[0].email } });
-  } catch (error) {
-    res.status(500).json({ error: "Erro ao fazer login" });
-  }
-});
-
-apiRouter.get("/auth/me", requireAuth, async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const user = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-    if (!user.length) return res.status(404).json({ error: "Usuário não encontrado" });
-    res.json({ user: { id: user[0].id, name: user[0].name, email: user[0].email } });
-  } catch (error) {
-    res.status(500).json({ error: "Erro ao buscar usuário" });
-  }
-});
-
-apiRouter.post("/auth/logout", (req, res) => {
-  res.clearCookie("token");
-  res.json({ success: true });
-});
-
-// DEV BYPASS: Auto-login to skip login screen during testing
-apiRouter.get("/auth/dev-bypass", async (req, res) => {
-  try {
-    const email = "admin@livecommerce.com";
-    let user = await db.select().from(users).where(eq(users.email, email)).limit(1);
-    
-    let userId = "";
-    let userName = "Admin (Teste)";
-    if (user.length === 0) {
-      userId = uuidv4();
-      await db.insert(users).values({
-        id: userId,
-        name: userName,
-        email,
-        password: await bcrypt.hash("123456", 10),
-      });
-    } else {
-      userId = user[0].id;
-      userName = user[0].name;
-    }
-
-    const token = signAuthToken(userId);
-    res.cookie("token", token, { httpOnly: true, secure: process.env.NODE_ENV === "production" });
-    res.json({ token, user: { id: userId, name: userName, email } });
-  } catch (error) {
-    res.status(500).json({ error: "Erro no bypass de login" });
-  }
-});
-
 // --- PUBLIC ROUTES ---
 apiRouter.get("/public/lives", async (req, res) => {
   try {
@@ -361,7 +467,7 @@ apiRouter.get("/lives/:id", requireAuth, async (req, res) => {
 });
 
 // --- UPLOAD VIDEO ---
-apiRouter.post("/videos/upload", requireAuth, videoUploadMiddleware.single("video"), async (req, res) => {
+apiRouter.post("/videos/upload", requireAuth, videoUploadMiddleware.single("video") as any, async (req: any, res: any) => {
   if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado" });
   try {
     const result = await videoService.uploadVideo(req.file);
