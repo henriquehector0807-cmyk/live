@@ -335,7 +335,7 @@ export default function DashboardPayments() {
                 </p>
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Public Key */}
           <div>
