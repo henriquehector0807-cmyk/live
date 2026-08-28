@@ -6,13 +6,13 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [isBypassing, setIsBypassing] = useState(true);
+  const [isBypassing, setIsBypassing] = useState(import.meta.env.DEV);
   const navigate = useNavigate();
   const { login } = useAuth();
   const hasAttempted = useRef(false);
 
   useEffect(() => {
-    if (hasAttempted.current) return;
+    if (!import.meta.env.DEV || hasAttempted.current) return;
     hasAttempted.current = true;
 
     const autoLogin = async () => {
@@ -42,8 +42,8 @@ export default function Login() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
-      if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.token && data.user) {
         login(data.token, data.user);
         navigate("/painel");
       } else {
